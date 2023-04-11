@@ -3,28 +3,39 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"io/ioutil"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
-	"net/url"
+	"os"
+	"time"
+
+	"github.com/chatgp/gpt3"
 )
 
-const GPTAPI = ""
+const DOGSAPI = "https://dog.ceo/api/breeds/image/random"
+const GPTURI = "/v1/images/generations"
 
 type client struct {
-	url *url.URL
-	c   *http.Client
+	// url *url.URL
+	c *http.Client
 }
 
 type options func(*client)
 
-func withURL(u string) options {
+//	func withURL(u string) options {
+//		return func(c *client) {
+//			pu, err := url.Parse(u)
+//			if err != nil {
+//				log.Fatal("client url could not be parsed")
+//			}
+//			c.url = pu
+//		}
+//	}
+
+func withRoundTripper(rt http.RoundTripper) options {
 	return func(c *client) {
-		pu, err := url.Parse(u)
-		if err != nil {
-			log.Fatal("client url could not be parsed")
-		}
-		c.url = pu
+		c.c.Transport = rt
 	}
 }
 
@@ -37,21 +48,53 @@ func newclient(opts ...options) *client {
 	return c
 }
 
-type response struct {
-	Message string `json:"message,omitempty"`
-	Status  string `json:"status,omitempty"`
+type gpt struct {
+	c *gpt3.Client
+}
+
+func newGptClient(k string) *gpt {
+	cli, _ := gpt3.NewClient(&gpt3.Options{
+		ApiKey:  k,
+		Timeout: 30 * time.Second,
+		Debug:   true,
+	})
+	return &gpt{c: cli}
+}
+func (c *gpt) RoundTrip(req *http.Request) (*http.Response, error) {
+	params := map[string]interface{}{
+		"prompt":          "a beautiful girl with big eyes",
+		"n":               1,
+		"size":            "256x256",
+		"response_format": "url",
+	}
+	rest, err := c.c.Post(GPTURI, params)
+	if err != nil {
+		return nil, err
+	}
+	bts, err := json.Marshal(rest.Get("data.0.url"))
+	if err != nil {
+		return nil, err
+	}
+	b := bytes.NewBuffer(bts)
+	res := new(http.Response)
+	res.Body = io.NopCloser(b)
+	return res, nil
 }
 
 func main() {
+	var APIKEY = os.Getenv("API_KEY")
+	if len(APIKEY) == 0 {
+		APIKEY = "xxxxxxxxxxxxxxxxxxxxxxx"
+	}
 
 	clt := newclient(
-		withURL(GPTAPI),
+		withRoundTripper(newGptClient(APIKEY)),
 	)
 
 	buf := bytes.NewBuffer(nil)
 	req, err := http.NewRequest(
 		http.MethodGet,
-		clt.url.Host,
+		"",
 		buf,
 	)
 	if err != nil {
@@ -61,17 +104,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("error while sending request, %s", err)
 	}
-	if b, err := ioutil.ReadAll(resp.Body); err != nil {
+	if b, err := io.ReadAll(resp.Body); err != nil {
 		log.Fatalf("error while reading response body, %s", err)
 	} else {
 		if _, err := buf.Write(b); err != nil {
 			log.Fatalf("error appending response bytes to buffer, %s", err)
 		}
 	}
-	r := new(response)
-	err = json.Unmarshal(buf.Bytes(), r)
-	if err != nil {
-		log.Fatalf("couldnt parse response body, %s", err)
-	}
+	fmt.Printf("response: %s", buf.String())
+	// err = json.Unmarshal(buf.Bytes(), r)
+	// if err != nil {
+	// 	log.Fatalf("couldnt parse response body, %s", err)
+	// }
 
 }
