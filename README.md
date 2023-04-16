@@ -30,8 +30,10 @@ spec:
             key: "auth-one"
 
 ```
+
 To run
-```sh
+
+```bash
 eksctl create cluster \
     --name api7task-cluster \
 	--version 1.25 \
