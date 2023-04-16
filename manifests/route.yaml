@@ -1,0 +1,25 @@
+apiVersion: apisix.apache.org/v2
+kind: ApisixRoute
+metadata:
+  name: api-routes
+spec:
+  http:
+    - name: route-1
+      match:
+        hosts:
+          - api7.task
+        paths:
+          - /home
+      backends:
+        - serviceName: backend-api
+          servicePort: 8080
+      plugins:
+        - name: limit-count
+          enable: true
+          config:
+            count: 10
+            time_window: 10
+        - name: key-auth
+          enable: true
+          config:
+            key: "auth-one"

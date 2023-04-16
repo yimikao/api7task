@@ -48,6 +48,18 @@ func newclient(opts ...options) *client {
 	return c
 }
 
+type test string
+
+func (c test) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp := new(http.Response)
+	byts, err := json.Marshal("hello world")
+	if err != nil {
+		return nil, err
+	}
+	resp.Body = io.NopCloser(bytes.NewBuffer(byts))
+	return resp, nil
+}
+
 type gpt struct {
 	c *gpt3.Client
 }
@@ -81,6 +93,12 @@ func (c *gpt) RoundTrip(req *http.Request) (*http.Response, error) {
 	return res, nil
 }
 
+type router func(w http.ResponseWriter, r *http.Request)
+
+func (rtr router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	rtr(w, r)
+}
+
 func main() {
 	var APIKEY = os.Getenv("API_KEY")
 	if len(APIKEY) == 0 {
@@ -88,7 +106,7 @@ func main() {
 	}
 
 	clt := newclient(
-		withRoundTripper(newGptClient(APIKEY)),
+		withRoundTripper(test("")),
 	)
 
 	buf := bytes.NewBuffer(nil)
@@ -111,7 +129,17 @@ func main() {
 			log.Fatalf("error appending response bytes to buffer, %s", err)
 		}
 	}
-	fmt.Printf("response: %s", buf.String())
+	// fmt.Printf("response: %s", buf.String())
+
+	h := router(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(buf.Bytes())
+	})
+
+	r := http.NewServeMux()
+	r.Handle("/home", h)
+
+	fmt.Println("...............")
+	log.Fatal(http.ListenAndServe(":8080", r))
 	// err = json.Unmarshal(buf.Bytes(), r)
 	// if err != nil {
 	// 	log.Fatalf("couldnt parse response body, %s", err)
